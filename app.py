@@ -51,3 +51,17 @@ def search():
         )
 
     return jsonify(resultats)
+@app.route("/debug")
+def debug():
+    jour = request.args.get("date", date.today().isoformat())
+    r = requests.get(
+        f"{BASE}/fixtures/date/{jour}",
+        params={"api_token": TOKEN},
+        timeout=20,
+    )
+    j = r.json()
+    return jsonify(
+        code=r.status_code,
+        nombre_de_matchs=len(j.get("data", [])),
+        message=j.get("message"),
+    )
