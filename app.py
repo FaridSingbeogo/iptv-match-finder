@@ -66,12 +66,14 @@ def lire_page(html):
     fin = next((i for i, l in enumerate(lignes) if l.startswith("Les dates et horaires")), len(lignes))
     lignes = lignes[debut:fin]
 
+    etiquettes = ("prochain match", "en direct", "direct", "live")
     matchs = []
     jour_courant = None
     n = len(lignes)
     i = 0
     while i < n:
         ligne = lignes[i]
+
         m = RE_JOUR.match(ligne)
         if m:
             d = construire_date(m.group(2), m.group(3))
@@ -80,21 +82,32 @@ def lire_page(html):
             i += 1
             continue
 
-        if RE_HEURE.match(ligne) and jour_courant and i + 1 < n:
-            equipes = lignes[i + 1]
-            if len(re.split(r"\s+[–-]\s+", equipes)) == 2:
-                comp = lignes[i + 2] if i + 2 < n else ""
-                if comp.lower().startswith("prochain match"):
-                    reste = comp[len("prochain match"):].strip()
-                    comp = reste or (lignes[i + 3] if i + 3 < n else "")
-                matchs.append({
-                    "date": jour_courant,
-                    "heure": ligne,
-                    "match": equipes,
-                    "competition": comp,
-                })
-                i += 3
-                continue
+        # Un match : heure, équipe 1, tiret, équipe 2, [étiquette], compétition
+        if (
+            RE_HEURE.match(ligne)
+            and jour_courant
+            and i + 3 < n
+            and lignes[i + 2] in ("–", "-", "—")
+        ):
+            equipe1 = lignes[i + 1]
+            equipe2 = lignes[i + 3]
+            j = i + 4
+            while j < n and lignes[j].lower() in etiquettes:
+                j += 1
+            if j < n and not RE_HEURE.match(lignes[j]) and not RE_JOUR.match(lignes[j]):
+                comp = lignes[j]
+                i = j + 1
+            else:
+                comp = ""
+                i = j
+            matchs.append({
+                "date": jour_courant,
+                "heure": ligne,
+                "match": f"{equipe1} – {equipe2}",
+                "competition": comp,
+            })
+            continue
+
         i += 1
     return matchs
 
