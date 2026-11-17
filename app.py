@@ -26,20 +26,7 @@ JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
         "août", "septembre", "octobre", "novembre", "décembre"]
 
-# Diffuseur selon la compétition (d'après TV-Direct, à mettre à jour si les droits changent)
-DIFFUSEURS = {
-    "uefa champions league": "Canal+",
-    "uefa europa league": "Canal+",
-    "uefa conference league": "Canal+",
-    "premier league": "Canal+",
-    "ligue 1": "Ligue 1+",
-    "ligue 2": "beIN Sports",
-    "bundesliga": "beIN Sports",
-    "primera division": "DAZN",
-    "serie a": "DAZN",
-}
-
-# Mots à repérer dans les noms de chaînes IPTV (en minuscules, sans accents)
+# Mots à repérer dans les noms de chaînes IPTV (import : tri large)
 MOTS_CLES = {
     "Canal+": ["canal+", "canal +", "canal plus", "canalplus"],
     "beIN Sports": ["bein"],
@@ -47,11 +34,61 @@ MOTS_CLES = {
     "Ligue 1+": ["ligue 1", "ligue1"],
 }
 
+# Chaînes à repérer dans ta liste, par diffuseur
+FAMILLES = {
+    "Canal+": {"marque": r"canal\s*\+(?!\s*\d)|canal plus|canalplus", "pays": ["FR"]},
+    "beIN Sports": {"marque": r"bein", "pays": ["FR"]},
+    "DAZN": {"marque": r"dazn", "pays": ["FR"]},
+    "Ligue 1+": {"marque": r"ligue ?1|ligue1", "pays": ["FR"]},
+}
+
+# À écarter toujours : sport féminin, autres sports, bars
+EXCLURE = (
+    r"\bf ?1\b|formul|fem[ei]n|women|ladies|\bbar\b|nba|nfl|nhl|mlb|ufc|boxing|boxe"
+    r"|tennis|golf|rugby|basket|handball|volley|cricket|wwe|darts|cyclisme|motogp"
+)
+
+COUPES_EUROPE = {"diffuseur": "Canal+", "fort": r"sport|foot|live|champions"}
+BEIN = {"diffuseur": "beIN Sports", "fort": r"sports?\s*\d|max"}
+
+# Règles par compétition (d'après TV-Direct, à mettre à jour si les droits changent)
+COMPETITIONS = {
+    "uefa champions league": COUPES_EUROPE,
+    "uefa europa league": COUPES_EUROPE,
+    "uefa conference league": COUPES_EUROPE,
+    "premier league": {"diffuseur": "Canal+", "fort": r"sport|foot|live|premier"},
+    "ligue 1": {"diffuseur": "Ligue 1+", "fort": r"."},
+    "ligue 2": BEIN,
+    "bundesliga": BEIN,
+    "primera division": {
+        "diffuseur": "DAZN", "fort": r"la ?liga",
+        "pays": ["FR", "ES"], "exclure": r"ligue ?1|serie",
+    },
+    "serie a": {
+        "diffuseur": "DAZN", "fort": r"serie ?a",
+        "pays": ["FR", "IT"], "exclure": r"ligue ?1|la ?liga",
+    },
+}
+
 
 def norm(texte):
     """Minuscules et sans accents, pour comparer facilement."""
     t = unicodedata.normalize("NFD", texte.lower())
     return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def regle_pour(competition):
+    c = COMPETITIONS.get(norm(competition))
+    if not c:
+        return None
+    fam = FAMILLES[c["diffuseur"]]
+    return {
+        "diffuseur": c["diffuseur"],
+        "marque": fam["marque"],
+        "fort": c["fort"],
+        "pays": c.get("pays", fam["pays"]),
+        "exclure": EXCLURE + ("|" + c["exclure"] if c.get("exclure") else ""),
+    }
 
 
 TOUS_LES_MOTS = [mot for mots in MOTS_CLES.values() for mot in mots]
@@ -357,7 +394,7 @@ def search():
         if mots and not all(mot in texte for mot in mots):
             continue
 
-        diffuseur = DIFFUSEURS.get(norm(m["competition"]))
+        regle = regle_pour(m["competition"])
         quand = (
             f"{JOURS[d.weekday()].capitalize()} {d.day} {MOIS[d.month - 1]} "
             f"à {dt.strftime('%H:%M')} (heure du Burkina)"
@@ -365,7 +402,9 @@ def search():
         resultats.append({
             "match": m["match"],
             "heure": f"{m['competition']} · {quand}",
-            "chaines": [diffuseur] if diffuseur else [],
+            "chaines": [regle["diffuseur"]] if regle else [],
+            "regle": regle,
+            "recherche": f"{m['match']} chaîne TV {d.day} {MOIS[d.month - 1]}",
         })
 
     return jsonify(resultats)
