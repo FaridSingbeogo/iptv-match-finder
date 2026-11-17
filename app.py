@@ -160,13 +160,21 @@ def search():
 
 @app.route("/debug")
 def debug():
-    try:
-        matchs = charger_matchs()
-    except requests.RequestException as e:
-        return jsonify(erreur=str(e)), 502
+    r = requests.get(
+        URL,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; BeogoIPTV/1.0)"},
+        timeout=20,
+    )
+    html = r.text
+    soup = BeautifulSoup(html, "html.parser")
+    lignes = [l.strip() for l in soup.get_text("\n").split("\n") if l.strip()]
     return jsonify(
-        nombre_de_matchs=len(matchs),
-        exemples=[
-            {**m, "date": m["date"].isoformat()} for m in matchs[:3]
-        ],
+        code=r.status_code,
+        taille_html=len(html),
+        titre=soup.title.string if soup.title else None,
+        contient_prochains_matchs="prochains matchs" in html.lower(),
+        contient_un_horaire=bool(re.search(r"\d{2}:\d{2}", html)),
+        nombre_de_lignes=len(lignes),
+        debut_du_texte=lignes[:15],
+        nombre_de_matchs=len(lire_page(html)),
     )
