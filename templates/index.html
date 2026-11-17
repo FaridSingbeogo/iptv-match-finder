@@ -6,6 +6,7 @@
 <title>BEOGO IPTV</title>
 <style>
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     min-height: 100vh;
@@ -47,7 +48,7 @@
     background: #f1faef;
     min-width: 0;
   }
-  .recherche button {
+  button {
     border: none;
     cursor: pointer;
     font-family: inherit;
@@ -60,7 +61,31 @@
     box-shadow: 0 6px 14px rgba(0,0,0,.3);
     transition: transform .2s, box-shadow .2s;
   }
-  .recherche button:hover { transform: translateY(-3px); box-shadow: 0 10px 18px rgba(0,0,0,.35); }
+  button:hover { transform: translateY(-3px); box-shadow: 0 10px 18px rgba(0,0,0,.35); }
+  button.secondaire { background: #fff; color: #111; }
+
+  .boite {
+    margin-top: 18px;
+    background: #fff;
+    border-radius: 22px;
+    padding: 14px 18px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.2);
+  }
+  .boite summary { cursor: pointer; font-weight: bold; font-size: 1.1rem; }
+  .boite label { display: block; margin: 14px 0 6px; font-size: .95rem; }
+  .boite select, .boite input[type="text"], .boite input[type="url"], .boite input[type="password"], .boite input[type="file"] {
+    width: 100%;
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 16px;
+    background: #f1faef;
+    margin-top: 8px;
+  }
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .note { font-size: .85rem; opacity: .75; margin: 12px 0 0; }
+  #statutImport { margin: 12px 0 0; font-weight: bold; }
 
   #message { text-align: center; margin: 22px 0 0; font-size: 1.05rem; }
 
@@ -75,7 +100,7 @@
   .carte:hover { transform: translateY(-5px); box-shadow: 0 16px 30px rgba(0,0,0,.28); }
   .carte h2 { margin: 0 0 4px; font-size: 1.2rem; }
   .heure { margin: 0 0 10px; font-size: .95rem; color: #444; }
-  .chaine {
+  .diffuseur {
     display: inline-block;
     background: #111;
     color: #d9f5d4;
@@ -85,7 +110,18 @@
     font-size: .95rem;
     box-shadow: 0 4px 10px rgba(0,0,0,.25);
   }
-  .aucune { color: #8a2b2b; font-style: italic; }
+  .liste-titre { margin: 12px 0 2px; font-size: .9rem; font-weight: bold; }
+  .chaine-liste {
+    display: inline-block;
+    background: #e6f7e3;
+    border: 1px solid #111;
+    padding: 4px 12px;
+    border-radius: 14px;
+    margin: 4px 6px 0 0;
+    font-size: .9rem;
+  }
+  .aucune { color: #8a2b2b; font-style: italic; font-size: .95rem; }
+  .astuce { color: #555; font-style: italic; font-size: .9rem; margin-top: 8px; }
 
   footer { text-align: center; margin-top: 30px; font-size: .9rem; color: #111; opacity: .75; }
 </style>
@@ -99,9 +135,42 @@
   </header>
 
   <form class="recherche" id="formulaire">
-    <input type="text" id="champ" placeholder="Ex : Real Madrid, Arsenal, Argentina..." autocomplete="off">
+    <input type="text" id="champ" placeholder="Ex : Real Madrid, Arsenal..." autocomplete="off">
     <button type="submit">Chercher</button>
   </form>
+
+  <details class="boite" id="boiteImport">
+    <summary>Ma liste IPTV</summary>
+
+    <label for="mode">Type de liste</label>
+    <select id="mode">
+      <option value="fichier">Fichier M3U (sur mon téléphone)</option>
+      <option value="m3u_url">Lien M3U</option>
+      <option value="xtream">Xtream Codes</option>
+    </select>
+
+    <div id="zone-fichier">
+      <input type="file" id="fichier" accept=".m3u,.m3u8,.txt">
+    </div>
+    <div id="zone-m3u_url" hidden>
+      <input type="url" id="lien" placeholder="http://exemple.com/liste.m3u" autocomplete="off">
+    </div>
+    <div id="zone-xtream" hidden>
+      <input type="text" id="serveur" placeholder="Serveur : http://exemple.com:8080" autocomplete="off">
+      <input type="text" id="utilisateur" placeholder="Nom d'utilisateur" autocomplete="off">
+      <input type="password" id="motdepasse" placeholder="Mot de passe" autocomplete="off">
+    </div>
+
+    <div class="actions">
+      <button type="button" id="btnImport">Importer</button>
+      <button type="button" id="btnEffacer" class="secondaire">Effacer ma liste</button>
+    </div>
+    <p id="statutImport"></p>
+    <p class="note">
+      Tes identifiants ne sont jamais enregistrés. Seuls les noms des chaînes de sport
+      sont gardés sur ton appareil. Le fichier M3U est lu directement sur ton téléphone.
+    </p>
+  </details>
 
   <p id="message"></p>
   <div id="resultats"></div>
@@ -110,61 +179,202 @@
 </div>
 
 <script>
-  const formulaire = document.getElementById("formulaire");
-  const champ = document.getElementById("champ");
-  const message = document.getElementById("message");
-  const resultats = document.getElementById("resultats");
+  const $ = (id) => document.getElementById(id);
+  const NORM = (t) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  formulaire.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const q = champ.value.trim();
-    resultats.innerHTML = "";
-    message.textContent = "Recherche en cours...";
+  let DIFFUSEURS = {};
+  let chaines = [];
+  let dernier = null;
 
+  try { chaines = JSON.parse(localStorage.getItem("beogo_chaines") || "[]"); } catch (e) { chaines = []; }
+  function sauver() {
+    try { localStorage.setItem("beogo_chaines", JSON.stringify(chaines)); } catch (e) {}
+  }
+
+  const pret = fetch("/api/diffuseurs")
+    .then((r) => r.json())
+    .then((d) => { DIFFUSEURS = d.diffuseurs || {}; })
+    .catch(() => {});
+
+  function statut(texte) { $("statutImport").textContent = texte; }
+
+  function majStatutInitial() {
+    if (chaines.length) statut(chaines.length + " chaînes de sport enregistrées sur cet appareil.");
+  }
+  majStatutInitial();
+
+  // --- Choix du type d'import ---
+  function afficherZone() {
+    const mode = $("mode").value;
+    ["fichier", "m3u_url", "xtream"].forEach((m) => { $("zone-" + m).hidden = (m !== mode); });
+  }
+  $("mode").addEventListener("change", afficherZone);
+
+  // --- Lecture d'un fichier M3U (dans le navigateur) ---
+  function parserM3U(texte) {
+    const noms = [];
+    for (const ligne of texte.split(/\r?\n/)) {
+      if (ligne.startsWith("#EXTINF")) {
+        const nom = ligne.slice(ligne.lastIndexOf(",") + 1).trim();
+        if (nom) noms.push(nom);
+      }
+    }
+    return noms;
+  }
+  function filtrer(noms) {
+    const mots = Object.values(DIFFUSEURS).flat().map(NORM);
+    const vus = new Set();
+    const sortie = [];
+    for (const n of noms) {
+      const k = NORM(n);
+      if (!vus.has(k) && mots.some((m) => k.includes(m))) {
+        vus.add(k);
+        sortie.push(n);
+        if (sortie.length >= 600) break;
+      }
+    }
+    return sortie;
+  }
+
+  // --- Import ---
+  $("btnImport").addEventListener("click", async () => {
+    const mode = $("mode").value;
+    statut("Import en cours...");
     try {
+      await pret;
+      let noms;
+      if (mode === "fichier") {
+        const f = $("fichier").files[0];
+        if (!f) { statut("Choisis d'abord un fichier."); return; }
+        noms = filtrer(parserM3U(await f.text()));
+      } else {
+        const corps = mode === "m3u_url"
+          ? { mode, url: $("lien").value.trim() }
+          : { mode, serveur: $("serveur").value.trim(), utilisateur: $("utilisateur").value.trim(), mot_de_passe: $("motdepasse").value };
+        const rep = await fetch("/api/iptv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(corps),
+        });
+        const data = await rep.json();
+        if (!rep.ok) { statut(data.erreur || "Import impossible."); return; }
+        noms = data.chaines;
+      }
+      chaines = noms;
+      sauver();
+      $("motdepasse").value = "";
+      $("lien").value = "";
+      statut(noms.length
+        ? noms.length + " chaînes de sport trouvées dans ta liste."
+        : "Aucune chaîne Canal+, beIN, DAZN ou Ligue 1 trouvée dans cette liste.");
+      if (dernier) afficher(dernier);
+    } catch (e) {
+      statut("Import impossible. Vérifie les informations.");
+    }
+  });
+
+  $("btnEffacer").addEventListener("click", () => {
+    chaines = [];
+    sauver();
+    statut("Ta liste a été effacée de cet appareil.");
+    if (dernier) afficher(dernier);
+  });
+
+  // --- Chaînes de ta liste pour un diffuseur ---
+  const estFR = (n) => /(^|[^a-z])fr([^a-z]|$)|france/.test(NORM(n));
+  function chainesPour(diffuseur) {
+    const mots = (DIFFUSEURS[diffuseur] || []).map(NORM);
+    const liste = chaines.filter((n) => mots.some((m) => NORM(n).includes(m)));
+    liste.sort((a, b) => (estFR(b) - estFR(a)) || a.localeCompare(b));
+    return liste.slice(0, 40);
+  }
+
+  // --- Affichage des résultats ---
+  function afficher(donnees) {
+    const zone = $("resultats");
+    zone.innerHTML = "";
+    donnees.forEach((m) => {
+      const carte = document.createElement("div");
+      carte.className = "carte";
+
+      const titre = document.createElement("h2");
+      titre.textContent = m.match;
+      carte.appendChild(titre);
+
+      const heure = document.createElement("p");
+      heure.className = "heure";
+      heure.textContent = m.heure || "";
+      carte.appendChild(heure);
+
+      if (m.chaines.length === 0) {
+        const vide = document.createElement("span");
+        vide.className = "aucune";
+        vide.textContent = "Diffuseur non indiqué";
+        carte.appendChild(vide);
+      }
+
+      m.chaines.forEach((d) => {
+        const badge = document.createElement("span");
+        badge.className = "diffuseur";
+        badge.textContent = d;
+        carte.appendChild(badge);
+
+        if (chaines.length) {
+          const liste = chainesPour(d);
+          const t = document.createElement("div");
+          t.className = "liste-titre";
+          if (liste.length) {
+            t.textContent = "Dans ta liste (" + d + ") :";
+            carte.appendChild(t);
+            liste.forEach((nom) => {
+              const p = document.createElement("span");
+              p.className = "chaine-liste";
+              p.textContent = nom;
+              carte.appendChild(p);
+            });
+          } else {
+            t.textContent = "Aucune chaîne " + d + " dans ta liste.";
+            t.className = "aucune";
+            carte.appendChild(t);
+          }
+        }
+      });
+
+      if (!chaines.length && m.chaines.length) {
+        const a = document.createElement("div");
+        a.className = "astuce";
+        a.textContent = "Importe ta liste IPTV (menu au-dessus) pour voir les chaînes à ouvrir.";
+        carte.appendChild(a);
+      }
+
+      zone.appendChild(carte);
+    });
+  }
+
+  // --- Recherche ---
+  $("formulaire").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = $("champ").value.trim();
+    $("resultats").innerHTML = "";
+    $("message").textContent = "Recherche en cours...";
+    try {
+      await pret;
       const reponse = await fetch("/search?q=" + encodeURIComponent(q));
       const donnees = await reponse.json();
-
       if (!reponse.ok) {
-        message.textContent = "Erreur : " + (donnees.erreur || "problème inconnu");
+        $("message").textContent = "Erreur : " + (donnees.erreur || "problème inconnu");
         return;
       }
       if (donnees.length === 0) {
-        message.textContent = "Aucun match trouvé.";
+        dernier = null;
+        $("message").textContent = "Aucun match trouvé.";
         return;
       }
-
-      message.textContent = donnees.length + " match(s) trouvé(s) :";
-      donnees.forEach((m) => {
-        const carte = document.createElement("div");
-        carte.className = "carte";
-
-        const titre = document.createElement("h2");
-        titre.textContent = m.match;
-        carte.appendChild(titre);
-
-        const heure = document.createElement("p");
-        heure.className = "heure";
-        heure.textContent = m.heure || "";
-        carte.appendChild(heure);
-
-        if (m.chaines.length === 0) {
-          const vide = document.createElement("span");
-          vide.className = "aucune";
-          vide.textContent = "Chaîne française non indiquée";
-          carte.appendChild(vide);
-        } else {
-          m.chaines.forEach((c) => {
-            const badge = document.createElement("span");
-            badge.className = "chaine";
-            badge.textContent = c;
-            carte.appendChild(badge);
-          });
-        }
-        resultats.appendChild(carte);
-      });
+      dernier = donnees;
+      $("message").textContent = donnees.length + " match(s) trouvé(s) :";
+      afficher(donnees);
     } catch (err) {
-      message.textContent = "Impossible de joindre le serveur.";
+      $("message").textContent = "Impossible de joindre le serveur.";
     }
   });
 </script>
