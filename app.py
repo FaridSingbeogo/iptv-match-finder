@@ -178,3 +178,34 @@ def debug():
         debut_du_texte=lignes[:15],
         nombre_de_matchs=len(lire_page(html)),
     )
+@app.route("/debug2")
+def debug2():
+    from flask import Response
+
+    r = requests.get(
+        URL,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; BeogoIPTV/1.0)"},
+        timeout=20,
+    )
+    html = r.text
+    soup = BeautifulSoup(html, "html.parser")
+    lignes = [l.strip() for l in soup.get_text("\n").split("\n") if l.strip()]
+
+    pos = next((i for i, l in enumerate(lignes) if "prochains matchs" in l.lower()), None)
+    if pos is None:
+        haut = "Aucune ligne 'prochains matchs'"
+    else:
+        haut = "\n".join(f"{i}: {lignes[i]}" for i in range(pos, min(pos + 30, len(lignes))))
+
+    heures = [i for i, l in enumerate(lignes) if re.search(r"\d{1,2}:\d{2}", l)][:6]
+    exemples = "\n".join(f"[{i}] " + " | ".join(lignes[i:i + 3]) for i in heures)
+
+    h = html.lower().find("prochains matchs")
+    brut = html[h:h + 1000] if h >= 0 else "introuvable"
+
+    texte = (
+        "=== TEXTE APRES 'PROCHAINS MATCHS' ===\n" + haut
+        + "\n\n=== LIGNES AVEC UN HORAIRE ===\n" + exemples
+        + "\n\n=== HTML BRUT ===\n" + brut
+    )
+    return Response(texte, mimetype="text/plain; charset=utf-8")
