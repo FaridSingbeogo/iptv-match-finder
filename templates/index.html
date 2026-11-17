@@ -130,7 +130,7 @@
         return;
       }
       if (donnees.length === 0) {
-        message.textContent = "Aucun match trouvé aujourd'hui.";
+        message.textContent = "Aucun match trouvé.";
         return;
       }
 
@@ -145,7 +145,7 @@
 
         const heure = document.createElement("p");
         heure.className = "heure";
-        heure.textContent = m.heure ? "Coup d'envoi : " + m.heure + " (UTC)" : "";
+        heure.textContent = m.heure || "";
         carte.appendChild(heure);
 
         if (m.chaines.length === 0) {
