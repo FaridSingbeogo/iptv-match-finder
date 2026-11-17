@@ -12,21 +12,21 @@
     min-height: 100vh;
     font-family: "Times New Roman", Times, serif;
     color: #111;
-    background: linear-gradient(160deg, #e6f7e3 0%, #b9e6b4 55%, #2b2b2b 130%);
+    background: linear-gradient(160deg, #fff1df 0%, #ffbf7a 55%, #2b2b2b 130%);
     padding: 20px 16px 40px;
   }
   .conteneur { max-width: 640px; margin: 0 auto; }
 
   header {
     background: #111;
-    color: #d9f5d4;
+    color: #ffb15c;
     text-align: center;
     padding: 22px 16px;
     border-radius: 24px;
     box-shadow: 0 14px 30px rgba(0,0,0,.35);
   }
   header h1 { margin: 0; font-size: 2rem; letter-spacing: 3px; }
-  header p { margin: 6px 0 0; font-size: 1rem; opacity: .85; }
+  header p { margin: 6px 0 0; font-size: 1rem; color: #ffd9b0; }
 
   .recherche {
     margin-top: 22px;
@@ -45,7 +45,7 @@
     font-size: 1.1rem;
     padding: 10px 14px;
     border-radius: 20px;
-    background: #f1faef;
+    background: #fff3e4;
     min-width: 0;
   }
   button {
@@ -54,7 +54,7 @@
     font-family: inherit;
     font-size: 1.05rem;
     font-weight: bold;
-    color: #d9f5d4;
+    color: #ffb15c;
     background: #111;
     padding: 10px 20px;
     border-radius: 20px;
@@ -80,7 +80,7 @@
     padding: 10px 14px;
     border: none;
     border-radius: 16px;
-    background: #f1faef;
+    background: #fff3e4;
     margin-top: 8px;
   }
   .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
@@ -103,7 +103,7 @@
   .diffuseur {
     display: inline-block;
     background: #111;
-    color: #d9f5d4;
+    color: #ffb15c;
     padding: 6px 14px;
     border-radius: 16px;
     margin: 4px 6px 0 0;
@@ -113,15 +113,31 @@
   .liste-titre { margin: 12px 0 2px; font-size: .9rem; font-weight: bold; }
   .chaine-liste {
     display: inline-block;
-    background: #e6f7e3;
+    background: #fff0dd;
     border: 1px solid #111;
     padding: 4px 12px;
     border-radius: 14px;
     margin: 4px 6px 0 0;
     font-size: .9rem;
   }
+  .carte details { margin-top: 12px; }
+  .carte summary { cursor: pointer; font-size: .9rem; font-weight: bold; }
   .aucune { color: #8a2b2b; font-style: italic; font-size: .95rem; }
   .astuce { color: #555; font-style: italic; font-size: .9rem; margin-top: 8px; }
+
+  .verifier {
+    display: inline-block;
+    margin-top: 16px;
+    background: #ff8a1f;
+    color: #111;
+    font-weight: bold;
+    text-decoration: none;
+    padding: 9px 18px;
+    border-radius: 18px;
+    box-shadow: 0 6px 14px rgba(0,0,0,.28);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .verifier:hover { transform: translateY(-3px); box-shadow: 0 10px 18px rgba(0,0,0,.35); }
 
   footer { text-align: center; margin-top: 30px; font-size: .9rem; color: #111; opacity: .75; }
 </style>
@@ -198,10 +214,7 @@
 
   function statut(texte) { $("statutImport").textContent = texte; }
 
-  function majStatutInitial() {
-    if (chaines.length) statut(chaines.length + " chaînes de sport enregistrées sur cet appareil.");
-  }
-  majStatutInitial();
+  if (chaines.length) statut(chaines.length + " chaînes de sport enregistrées sur cet appareil.");
 
   // --- Choix du type d'import ---
   function afficherZone() {
@@ -280,13 +293,93 @@
     if (dernier) afficher(dernier);
   });
 
-  // --- Chaînes de ta liste pour un diffuseur ---
-  const estFR = (n) => /(^|[^a-z])fr([^a-z]|$)|france/.test(NORM(n));
-  function chainesPour(diffuseur) {
-    const mots = (DIFFUSEURS[diffuseur] || []).map(NORM);
-    const liste = chaines.filter((n) => mots.some((m) => NORM(n).includes(m)));
-    liste.sort((a, b) => (estFR(b) - estFR(a)) || a.localeCompare(b));
-    return liste.slice(0, 40);
+  // --- Chaînes de ta liste pour un match ---
+  function paysDe(nom) {
+    const m = nom.match(/^\s*([A-Za-z]{2})\s*[:|\-]/);
+    if (m) return m[1].toUpperCase();
+    if (/(^|[^a-z])fr([^a-z]|$)|france/i.test(nom)) return "FR";
+    return "";
+  }
+  const ordre = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+
+  function chainesPour(regle) {
+    const marque = new RegExp(regle.marque, "i");
+    const fort = new RegExp(regle.fort, "i");
+    const exclure = new RegExp(regle.exclure, "i");
+    const principales = [];
+    const possibles = [];
+    for (const nom of chaines) {
+      const k = NORM(nom);
+      if (!marque.test(k) || exclure.test(k)) continue;
+      const p = paysDe(nom);
+      if (p && !regle.pays.includes(p)) continue;
+      (fort.test(k) ? principales : possibles).push(nom);
+    }
+    const tri = (liste) =>
+      liste.sort((a, b) => ((paysDe(b) !== "") - (paysDe(a) !== "")) || ordre(a, b));
+    return {
+      principales: tri(principales).slice(0, 30),
+      possibles: tri(possibles).slice(0, 30),
+    };
+  }
+
+  function etiquettes(conteneur, liste) {
+    liste.forEach((nom) => {
+      const p = document.createElement("span");
+      p.className = "chaine-liste";
+      p.textContent = nom;
+      conteneur.appendChild(p);
+    });
+  }
+
+  function remplirChaines(carte, m) {
+    if (!m.regle) {
+      const vide = document.createElement("span");
+      vide.className = "aucune";
+      vide.textContent = "Diffuseur non indiqué";
+      carte.appendChild(vide);
+      return;
+    }
+
+    const badge = document.createElement("span");
+    badge.className = "diffuseur";
+    badge.textContent = m.regle.diffuseur;
+    carte.appendChild(badge);
+
+    if (!chaines.length) {
+      const a = document.createElement("div");
+      a.className = "astuce";
+      a.textContent = "Importe ta liste IPTV (menu au-dessus) pour voir les chaînes à ouvrir.";
+      carte.appendChild(a);
+      return;
+    }
+
+    const r = chainesPour(m.regle);
+
+    if (r.principales.length) {
+      const t = document.createElement("div");
+      t.className = "liste-titre";
+      t.textContent = "Chaînes les plus probables :";
+      carte.appendChild(t);
+      etiquettes(carte, r.principales);
+    }
+
+    if (r.possibles.length) {
+      const det = document.createElement("details");
+      const sum = document.createElement("summary");
+      sum.textContent = "Autres chaînes possibles (" + r.possibles.length + ")";
+      det.appendChild(sum);
+      etiquettes(det, r.possibles);
+      if (!r.principales.length) det.open = true;
+      carte.appendChild(det);
+    }
+
+    if (!r.principales.length && !r.possibles.length) {
+      const t = document.createElement("div");
+      t.className = "aucune";
+      t.textContent = "Aucune chaîne " + m.regle.diffuseur + " trouvée dans ta liste.";
+      carte.appendChild(t);
+    }
   }
 
   // --- Affichage des résultats ---
@@ -306,46 +399,17 @@
       heure.textContent = m.heure || "";
       carte.appendChild(heure);
 
-      if (m.chaines.length === 0) {
-        const vide = document.createElement("span");
-        vide.className = "aucune";
-        vide.textContent = "Diffuseur non indiqué";
-        carte.appendChild(vide);
-      }
+      remplirChaines(carte, m);
 
-      m.chaines.forEach((d) => {
-        const badge = document.createElement("span");
-        badge.className = "diffuseur";
-        badge.textContent = d;
-        carte.appendChild(badge);
-
-        if (chaines.length) {
-          const liste = chainesPour(d);
-          const t = document.createElement("div");
-          t.className = "liste-titre";
-          if (liste.length) {
-            t.textContent = "Dans ta liste (" + d + ") :";
-            carte.appendChild(t);
-            liste.forEach((nom) => {
-              const p = document.createElement("span");
-              p.className = "chaine-liste";
-              p.textContent = nom;
-              carte.appendChild(p);
-            });
-          } else {
-            t.textContent = "Aucune chaîne " + d + " dans ta liste.";
-            t.className = "aucune";
-            carte.appendChild(t);
-          }
-        }
-      });
-
-      if (!chaines.length && m.chaines.length) {
-        const a = document.createElement("div");
-        a.className = "astuce";
-        a.textContent = "Importe ta liste IPTV (menu au-dessus) pour voir les chaînes à ouvrir.";
-        carte.appendChild(a);
-      }
+      const sep = document.createElement("div");
+      carte.appendChild(sep);
+      const lien = document.createElement("a");
+      lien.className = "verifier";
+      lien.href = "https://www.google.com/search?q=" + encodeURIComponent(m.recherche || (m.match + " chaîne TV"));
+      lien.target = "_blank";
+      lien.rel = "noopener noreferrer";
+      lien.textContent = "Vérifier sur Internet ↗";
+      sep.appendChild(lien);
 
       zone.appendChild(carte);
     });
